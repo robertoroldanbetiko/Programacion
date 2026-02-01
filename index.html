@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile IDE Pro</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/dracula.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/css/css.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/matchtags.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/fold/xml-fold.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; height: 100vh; display: flex; flex-direction: column;
+            background: #282a36; font-family: sans-serif; overflow: hidden;
+        }
+
+        header {
+            background: #191a21; padding: 8px; display: flex; gap: 8px;
+            overflow-x: auto; border-bottom: 1px solid #444; align-items: center;
+            scrollbar-width: none;
+        }
+        header::-webkit-scrollbar { display: none; }
+
+        header button, header select {
+            background: #44475a; color: white; border: none; padding: 8px 12px;
+            border-radius: 4px; font-size: 13px; white-space: nowrap; height: 36px;
+        }
+
+        header select { background: #6272a4; outline: none; }
+        .btn-danger { background: #ff5555 !important; }
+        .btn-success { background: #50fa7b !important; color: #282a36 !important; font-weight: bold; }
+
+        main { flex: 1; position: relative; overflow: hidden; }
+        .CodeMirror { height: 100% !important; font-size: 16px; }
+
+        .CodeMirror-matchingbracket { color: #50fa7b !important; text-decoration: underline; font-weight: bold; }
+        .CodeMirror-matchingtag { background: rgba(255, 121, 198, 0.3); }
+
+        .quick-keys {
+            background: #191a21; display: flex; overflow-x: auto;
+            padding: 5px; gap: 5px; border-top: 1px solid #444;
+        }
+        .quick-keys button {
+            background: #6272a4; color: white; border: none; min-width: 38px;
+            height: 38px; border-radius: 4px; font-weight: bold;
+        }
+
+        #preview-layer {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: white; z-index: 1000; display: none; flex-direction: column;
+        }
+
+        #live-search-layer {
+            position: fixed; inset: 0; z-index: 2000; display: none;
+            background: rgba(0,0,0,.8); padding: 15px;
+        }
+        #live-search-box {
+            width: 100%; max-width: 600px; margin: 0 auto; background: #191a21;
+            border-radius: 12px; display: flex; flex-direction: column; overflow: hidden;
+        }
+        #live-search-input {
+            padding: 12px; border: 1px solid #6272a4; background: #282a36;
+            color: #50fa7b; margin: 10px; font-size: 16px; border-radius: 8px;
+        }
+        #live-search-results { max-height: 60vh; overflow-y: auto; }
+        .ls-item {
+            width: 100%; text-align: left; background: #282a36; color: white;
+            border: none; padding: 15px; border-bottom: 1px solid #444; font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <button onclick="document.getElementById('file-input').click()">📂 Abrir</button>
+    <div style="display: flex; gap: 4px;">
+        <select id="export-format">
+            <option value="html">.html</option>
+            <option value="zip">.zip</option>
+        </select>
+        <button onclick="handleSave()" style="background: #bd93f9; font-weight: bold;">💾 Guardar</button>
+    </div>
+    <button onclick="openLiveSearch()" style="background: #6272a4;">🔎 Buscar y Ubicar</button>
+    <button class="btn-success" onclick="showPreview()">👁️ Ver</button>
+    <button class="btn-danger" onclick="resetEditor()">🗑️ Reset</button>
+    <input type="file" id="file-input" style="display:none">
+</header>
+
+<main>
+    <textarea id="editor"></textarea>
+</main>
+
+<div class="quick-keys">
+    <button onclick="insertCode('<')">&lt;</button>
+    <button onclick="insertCode('>')">&gt;</button>
+    <button onclick="insertCode('/')">/</button>
+    <button onclick="insertCode('=')">=</button>
+    <button onclick="insertCode('{')">{</button>
+    <button onclick="insertCode('}')">}</button>
+    <button onclick="insertCode('(')">(</button>
+    <button onclick="insertCode(')')">)</button>
+    <button onclick="insertCode(';')">;</button>
+    <button onclick="insertCode('\t')">TAB</button>
+</div>
+
+<div id="preview-layer">
+    <header style="justify-content: space-between; display: flex; background:#191a21;">
+        <span style="color:white; padding: 10px;">Vista Previa</span>
+        <button onclick="hidePreview()" class="btn-danger" style="margin: 5px;">Cerrar</button>
+    </header>
+</div>
+
+<div id="live-search-layer">
+    <div id="live-search-box">
+        <div style="display: flex; align-items: center; padding-right: 10px;">
+            <input id="live-search-input" type="text" placeholder="Buscar para ubicar bloque..." autocomplete="off">
+            <button onclick="closeLiveSearch()" style="background: #ff5555; border: none; color: white; border-radius: 5px; height: 35px; width: 35px;">✕</button>
+        </div>
+        <div id="live-search-results"></div>
+    </div>
+</div>
+
+<script>
+    const editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
+        mode: "htmlmixed",
+        theme: "dracula",
+        lineNumbers: true,
+        lineWrapping: true,
+        inputStyle: "textarea",
+        matchBrackets: true,
+        matchTags: {bothTags: true},
+        spellcheck: false,
+    });
+
+    function handleSave() {
+        const format = document.getElementById('export-format').value;
+        const content = editor.getValue();
+        if (format === 'html') {
+            saveAs(new Blob([content], { type: "text/html" }), "index.html");
+        } else {
+            const zip = new JSZip();
+            zip.file("index.html", content);
+            zip.generateAsync({type:"blob"}).then(b => saveAs(b, "proyecto.zip"));
+        }
+    }
+
+    function insertCode(char) {
+        editor.replaceSelection(char);
+        editor.focus();
+    }
+
+    function resetEditor() {
+        if (confirm("¿Borrar todo?")) {
+            editor.setValue("");
+            localStorage.removeItem('mobile_code');
+        }
+    }
+
+    document.getElementById('file-input').onchange = (e) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => editor.setValue(ev.target.result);
+        reader.readAsText(e.target.files[0]);
+    };
+
+    function showPreview() {
+        const layer = document.getElementById('preview-layer');
+        const oldFrame = document.getElementById('output');
+        
+        if (oldFrame) oldFrame.remove();
+
+        const newFrame = document.createElement('iframe');
+        newFrame.id = 'output';
+        newFrame.style.cssText = "flex:1; border:none; background:white;";
+        layer.appendChild(newFrame);
+
+        layer.style.display = 'flex';
+        const doc = newFrame.contentDocument || newFrame.contentWindow.document;
+        doc.open();
+        doc.write(editor.getValue());
+        doc.close();
+    }
+
+    function hidePreview() { 
+        document.getElementById('preview-layer').style.display = 'none'; 
+        const frame = document.getElementById('output');
+        if (frame) frame.remove(); // Limpiar al cerrar
+    }
+
+    const liveLayer = document.getElementById('live-search-layer');
+    const liveInput = document.getElementById('live-search-input');
+    const liveResults = document.getElementById('live-search-results');
+
+    function openLiveSearch() { liveLayer.style.display = 'block'; liveInput.focus(); }
+    function closeLiveSearch() { liveLayer.style.display = 'none'; }
+
+    liveInput.addEventListener('input', function() {
+        const q = this.value.toLowerCase().trim();
+        liveResults.innerHTML = "";
+        if (q.length < 1) return;
+        
+        editor.getValue().split('\n').forEach((text, i) => {
+            if (text.toLowerCase().includes(q)) {
+                const btn = document.createElement('button');
+                btn.className = 'ls-item';
+                const safeText = text.replace(/</g, "&lt;").trim();
+                btn.innerHTML = `<small>Línea ${i+1}:</small> ${safeText.substring(0, 60)}`;
+                
+                btn.onclick = () => {
+                    const pos = {line: i, ch: text.toLowerCase().indexOf(q)};
+                    editor.setCursor(pos);
+                    let range = CodeMirror.findMatchingTag(editor, pos);
+                    if (range && range.open && range.close) {
+                        editor.setSelection(range.open.from, range.close.to);
+                    } else {
+                        editor.setSelection({line: i, ch: 0}, {line: i, ch: text.length});
+                    }
+                    editor.scrollIntoView(pos, 200);
+                    closeLiveSearch();
+                };
+                liveResults.appendChild(btn);
+            }
+        });
+    });
+
+    editor.on('change', () => localStorage.setItem('mobile_code', editor.getValue()));
+    window.onload = () => {
+        const saved = localStorage.getItem('mobile_code');
+        if (saved) editor.setValue(saved);
+    };
+</script>
+</body>
+</html>
